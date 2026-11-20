@@ -1,0 +1,21 @@
+# Original evidence and local working material must never enter Git.
+private/
+originals/
+raw/
+homelab-private-originals/
+*-original.*
+*.jpg
+*.jpeg
+*.log
+*.har
+*.env
+.env*
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*
+*secrets*
+__pycache__/
+.DS_Store
+Thumbs.db
