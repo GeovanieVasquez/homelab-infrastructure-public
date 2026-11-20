@@ -1,137 +1,365 @@
-# Home Lab Infrastructure
+# Proxmox Home Lab
 
-A personal environment for learning how everyday services work, from the hardware underneath them to virtualization, storage, containers, and private connectivity.
+Self-hosted infrastructure built around Proxmox VE, Linux virtual machines, LXC containers, ZFS storage, Docker applications, and NetBird connectivity.
 
-I built this lab to extend my passion for building computers into understanding the services I use every day. Its current workloads include media applications, a password-management service, network storage, and infrastructure management.
+I built this lab to take my passion for building computers further and understand how the services I use every day work. It brings together media services, password management, storage, and infrastructure administration in one environment.
 
-**Documentation snapshot: November 19, 2026 (America/Chicago).** This project records a read-only inspection of the running environment through existing browser sessions. It contains documentation and sanitized evidence, rather than deployment configuration. Operational observations describe that inspection, not an availability guarantee.
+**Current footprint:** one hypervisor · two VMs · two LXC containers · three ZFS pools · four containers on the inspected Docker host.
 
-## At a glance
+[Architecture](#architecture) · [Hardware](#hardware) · [Services](#containerized-services) · [Networking](#networking) · [Screenshots](#screenshots) · [Documentation](#documentation)
 
-| Layer | Verified environment |
-| --- | --- |
-| Host | One Proxmox VE 9.2.10 node; Intel Core i5-14400; 16 logical CPUs; 15.34 GiB reported RAM |
-| Virtualization | Two running QEMU VMs and two running LXC containers |
-| Application management | Docker Engine 29.7.2 and Portainer CE 2.45.0 LTS on an Ubuntu 26.04 LTS Docker host |
-| Storage | Three host ZFS pools reported ONLINE; two large NAS guest mounts configured as 20000G and 12000G |
-| Connectivity | NetBird peers, one active LAN resource, one routing peer, and two HTTPS reverse-proxy service entries |
-| Visibility | Proxmox resource graphs, Portainer state and health reporting, Homepage widgets, application health pages |
+> **Environment snapshot — November 19, 2026.** Details come from read-only inspection of the actual lab. Service state reflects that inspection. Hosting relationships and access limits are recorded in the [service inventory](docs/services.md).
 
-## Technologies
-
-- **Compute and operating systems:** Proxmox VE, QEMU virtual machines, LXC, Linux, Ubuntu.
-- **Containers and management:** Docker, Portainer Community Edition, Homepage.
-- **Storage:** ZFS, LVM-backed guest disks, LXC mount points.
-- **Networking:** NetBird, LAN routing, HTTPS reverse proxy.
-- **Applications:** Jellyfin, Seerr (dashboard label: Jellyseerr), Sonarr, Bazarr, and Vaultwarden. Additional linked applications and access limits are in the [service inventory](docs/services.md).
-
-These are observed technologies. The presence of a product does not imply that every feature it offers has been configured.
-
-## Infrastructure architecture
+## Architecture
 
 ```mermaid
 flowchart TB
-    clients["Client devices"] --> lan["Local network"]
-    clients --> nb["NetBird private connectivity"]
-    nb --> route["Routing LXC"]
-    route --> lan
-    lan --> pve["Proxmox VE host"]
-    pve --> nas["NAS LXC · Ubuntu · unprivileged"]
-    pve --> media["Media VM"]
-    pve --> dock["Docker host VM"]
-    pve --> route
-    pve --> zfs["Host ZFS pools"]
-    zfs -->|"configured guest mounts"| nas
-    dock --> apps["Homepage · Portainer · Vaultwarden · NetBird proxy"]
-    proxy["NetBird HTTPS service entries"] --> jf["Jellyfin"]
-    proxy --> vw["Vaultwarden"]
-    apps --- vw
-    pve --- metrics["Built-in resource graphs"]
+    client["Client devices"] --> lan["Local network"]
+    client --> mesh["NetBird private connectivity"]
+    mesh --> router["Routing LXC"]
+    router --> lan
+    lan --> host["Proxmox VE"]
+    host --> nas["NAS LXC"]
+    host --> media["Media VM"]
+    host --> docker["Docker host VM"]
+    host --> router
+    host --> pools["ZFS storage pools"]
+    pools -->|"guest mount points"| nas
+    docker --> homepage["Homepage"]
+    docker --> portainer["Portainer"]
+    docker --> vault["Vaultwarden"]
+    docker --> reverse["NetBird reverse proxy"]
+    entries["Configured HTTPS services"] --> jellyfin["Jellyfin"]
+    entries --> vault
+    host --- graphs["Host and guest resource graphs"]
 ```
 
-Arrows show observed hosting, access, or configuration relationships; they are not a packet-level network map. The media VM is confirmed, but its mapping to individual application endpoints has not been independently verified. The two HTTPS entries are confirmed configuration, not proof of successful remote sessions. See [architecture](docs/architecture.md) for evidence and boundaries, and the [standalone diagram source](assets/diagrams/architecture.mmd).
+Proxmox hosts separate guests for storage, network routing, media, and general Docker workloads. ZFS pools provide backing storage for the NAS guest's large mount points. The Docker host runs Homepage, Portainer, Vaultwarden, and a NetBird reverse-proxy container.
 
-## Services
+NetBird also has two HTTPS service entries associated with Jellyfin and Vaultwarden. Those entries are shown separately because their backend target configuration and end-to-end access were not tested. Individual media applications are not mapped to the media VM until their placement is confirmed.
 
-| Service | Role | Inspection result |
+[Architecture details](docs/architecture.md) · [Editable diagram](assets/diagrams/architecture.mmd)
+
+## Hardware
+
+### Proxmox Host
+
+| Component | Reported configuration |
+| --- | --- |
+| Processor | Intel Core i5-14400, one socket |
+| Logical CPUs | 16 |
+| Memory | 15.34 GiB reported by Proxmox |
+| Hypervisor | Proxmox VE 9.2.10 |
+| Boot mode | EFI with Secure Boot |
+| Storage | Three ZFS pools, plus local and LVM-backed storage entries |
+
+Pool capacities are listed below. Physical disk models, device count, and redundancy layout have not been verified.
+
+## Virtualization
+
+### NAS LXC
+
+An unprivileged Ubuntu container assigned to the storage role.
+
+- 4 CPU cores.
+- 3.02 GiB RAM and 1 GiB swap.
+- 20G configured root disk.
+- Two large ZFS-backed mounts configured as 20000G and 12000G.
+- A separate 16G mount.
+
+### Network Routing LXC
+
+A dedicated LXC guest appears as an Ubuntu 22.04 NetBird peer and the active routing peer for the configured LAN resource.
+
+- 1 CPU shown in the Proxmox inventory.
+- Active routing and masquerade configuration visible in NetBird.
+- Private connectivity managed separately from application containers.
+
+### Media VM
+
+A running QEMU VM assigned to the media role, with 6 CPUs, 8 GiB RAM, and a 42 GiB boot disk.
+
+The guest has no configured guest agent. The relationship between this VM and individual media-service endpoints remains an open verification item.
+
+### Docker Host VM
+
+A separate QEMU VM corresponds by hostname and CPU count to the host shown in Portainer.
+
+- 4 CPUs.
+- Approximately 2.98 GiB RAM reported by Proxmox.
+- 64 GiB boot disk.
+- Ubuntu 26.04 LTS reported by Portainer.
+- Docker Engine 29.7.2.
+
+[Guest organization and evidence](docs/architecture.md)
+
+## Containerized Services
+
+### Homepage
+
+The main entry point for the lab, grouping infrastructure, media, automation, downloads, storage, and security services.
+
+Its dashboard displays CPU, free-memory, and free-disk widgets. Portainer confirms the Homepage container and reports it as healthy.
+
+### Portainer
+
+Portainer Community Edition provides a browser interface for the local Docker environment.
+
+| Inspected environment | Reported value |
+| --- | --- |
+| Portainer | CE 2.45.0 LTS |
+| Docker Engine | 29.7.2 |
+| Containers | 4 running; 0 stopped |
+| Health results | 2 healthy; 0 unhealthy |
+| Stacks | 3 |
+| Volumes | 3 |
+| Networks | 8 |
+
+The container list contains Homepage, Portainer, Vaultwarden, and the NetBird reverse proxy. This inventory covers one Docker host; it is not a count of every application in the lab.
+
+### Vaultwarden
+
+A password-management service deployed from the Vaultwarden server image in its own stack. Portainer reports its container as healthy, and NetBird lists an HTTPS service entry for it.
+
+The existing browser tab remained on a loading screen during inspection. Vault contents, credentials, and administrative secrets were not opened.
+
+### NetBird Reverse Proxy
+
+A running container using the NetBird reverse-proxy image. NetBird's service interface lists two HTTPS entries associated with Jellyfin and Vaultwarden, with authentication and access-control indicators.
+
+The entries verify configured service access points. Detailed policies, certificate handling, and remote access behavior require separate verification.
+
+## Media Services
+
+### Jellyfin
+
+Jellyfin provides the lab's media-server interface. The library interface and administration dashboard both loaded, and the server, web, and build versions reported **10.11.11**.
+
+The captured administration view shows the server version while excluding media details and user activity. Playback and transcoding were not exercised.
+
+### Seerr / Jellyseerr
+
+The dashboard labels the request-management service as Jellyseerr; the destination identifies itself as **Seerr Stable 3.4.1**.
+
+The discovery and request interface was accessible. No request was submitted, and connections to library-management applications were not inspected.
+
+### Sonarr
+
+Sonarr provides series organization and automation. Its System page confirms version **4.0.19.2979**, a LinuxServer.io package, Docker hosting, and .NET and SQLite components.
+
+The interface was populated and displayed an available-update warning. Sonarr is not among the four containers on the inspected Portainer host, so its exact host mapping remains separate from that inventory.
+
+### Bazarr
+
+Bazarr provides subtitle management. A populated series interface was accessible during inspection. Subtitle jobs and integration settings were not exercised.
+
+### Other Linked Applications
+
+| Application | Role | Access result |
 | --- | --- | --- |
-| Homepage | Central service directory and resource widgets | Dashboard rendered; Docker health marked healthy |
-| Proxmox VE | Host, VMs, LXC, storage and resource administration | Host and four guests running |
-| Portainer | Docker environment administration | One local environment; four running containers |
-| NetBird | Private connectivity, LAN routing and reverse proxy | Peer, network, routing and proxy interfaces inspected |
-| NAS guest | Storage role with large ZFS-backed mounts | Guest and mounts inspected through Proxmox; shares not tested |
-| Jellyfin | Media server | Library UI and administration dashboard rendered |
-| Seerr | Media discovery and request management | Interface rendered as Seerr 3.4.1 |
-| Sonarr | Series organization and automation | System page confirms Docker; update warning visible |
-| Bazarr | Subtitle management | Populated interface rendered; workflow not exercised |
-| Vaultwarden | Password management | Container healthy; web tab remained on a loading screen; vault contents not inspected |
+| Radarr | Movie organization and automation | Login page |
+| Lidarr | Music organization and automation | Authentication setup requirement |
+| Prowlarr | Indexer management | Login page |
+| qBittorrent | Download client | WebUI login page |
+| NZBGet | Download client | Browser authentication error |
 
-Radarr, Prowlarr and qBittorrent presented login pages. Lidarr presented an authentication-configuration requirement. NZBGet could not be inspected because browser navigation reported an authentication error. These are recorded as access limits, not successful workflow verification.
+These applications are linked from Homepage. Their hosting, integrations, and workflows remain unverified. No automated request-to-download pipeline is asserted from the links alone.
 
-## Storage and networking
+[Complete service inventory](docs/services.md)
 
-The NAS is a running, unprivileged Ubuntu LXC with two large mounts configured as **20000G** and **12000G**, plus a separate **16G** mount and **20G** root disk. This supports the approximate 32 TB description at the configured-allocation level. Host pool sizes, guest quotas and usable network-share capacity measure different things; [storage documentation](docs/storage.md) keeps them separate.
+## Storage
 
-NetBird connects client devices and an Ubuntu LXC peer. Its Networks interface shows an active LAN resource, one policy and one routing peer. Two reverse-proxy entries are configured for Jellyfin and Vaultwarden using HTTPS. No custom NetBird nameservers or DNS zones were listed in the inspected views. Administrative URLs, domains and addressing are omitted. See [networking and security](docs/networking.md).
+The host's ZFS view reports three pools:
 
-## Monitoring and reliability
+| Pool | Reported size | Reported free | State |
+| --- | --- | --- | --- |
+| flash | 511.10 GB | 492.45 GB | ONLINE |
+| media | 23.98 TB | 20.84 TB | ONLINE |
+| tank | 17.99 TB | 17.99 TB | ONLINE |
 
-Proxmox provides host and guest resource graphs. Portainer reports container state and health: four containers running, two healthy, zero unhealthy at inspection. Homepage displays resource widgets, and Sonarr exposes health and disk-space information.
+The NAS guest's two large mounts total **32000G as configured**, supporting the approximate 32 TB description at the guest-allocation level. Pool size, configured allocation, and usable network-share capacity are distinct measurements.
 
-These are built-in observations; no dedicated monitoring or alerting deployment was confirmed. The Proxmox datacenter backup schedule had no listed jobs, and no recovery test was verified. The host task list showed successful package-database refreshes, which do not establish that packages were upgraded. [Monitoring and maintenance](docs/monitoring.md) records these limits.
+Homepage includes a file-share link for the NAS. Export protocol, Samba configuration, share permissions, and application mounts have not been verified. The NAS icon does not establish a TrueNAS installation.
+
+[Storage layers and mount details](docs/storage.md)
+
+## Networking
+
+### Private Remote Connectivity
+
+NetBird's dashboard lists desktop, laptop, phone, and LXC peers. Its Networks interface shows one active LAN resource, one active policy, and one active routing peer matching the routing LXC.
+
+The routing peer has masquerade enabled. High Availability is shown as inactive. The older Routes interface contains no entries; the LAN resource is configured through Networks.
+
+### Reverse Proxy and HTTPS
+
+Two HTTPS service entries are configured for Jellyfin and Vaultwarden. The lab also runs a NetBird reverse-proxy container.
+
+Private domains, addressing, and administrative endpoints are omitted from this repository. External reachability, effective authentication rules, and backend target configuration were not tested.
+
+### DNS
+
+The inspected NetBird Nameservers and Zones views contain no custom entries. The LAN resolver arrangement and external DNS configuration remain undocumented until verified.
+
+[Networking and security details](docs/networking.md)
+
+## Monitoring and Maintenance
+
+### Infrastructure Resources
+
+Proxmox provides host and guest graphs for CPU, memory, network traffic, disk I/O, and pressure metrics. Its ZFS interface reports pool capacity and health.
+
+Portainer adds container-state and health visibility. Homepage provides resource widgets, and Sonarr exposes application health and disk-space information.
+
+### Logs and Updates
+
+Docker reports the json-file logging driver. Proxmox's visible task history includes successful package-database refreshes. Sonarr and Portainer display available-update notices.
+
+Installed patch history, log rotation, retention, centralized collection, and alert delivery were not verified. No dedicated monitoring server has been confirmed.
+
+### Backups and Recovery
+
+The inspected Proxmox datacenter Backup list contains no scheduled jobs. One NAS mount has a backup inclusion flag, but completed backups and restore tests were not verified.
+
+[Monitoring, maintenance, and recovery evidence](docs/monitoring.md)
+
+## Security
+
+The verified security-related configuration includes:
+
+- An unprivileged NAS LXC.
+- NetBird private connectivity with a configured LAN resource and policy.
+- HTTPS service entries with authentication and access-control indicators.
+- Application login or setup barriers on several linked endpoints.
+- EFI Secure Boot reported by the hypervisor.
+
+The documentation excludes credentials, tokens, keys, internal addresses, private domains, account identifiers, personal media, and raw logs. Original screenshots are kept outside Git; only reviewed, sanitized captures are included.
+
+Firewall rules, public exposure, detailed proxy policies, and a complete access-control audit remain outside the verified scope.
+
+## Technologies
+
+| Area | Verified technologies |
+| --- | --- |
+| Virtualization | Proxmox VE, QEMU VMs, LXC |
+| Operating systems | Linux, Ubuntu |
+| Containers | Docker Engine, Portainer CE |
+| Storage | ZFS, LVM-backed guest disks, LXC mount points |
+| Connectivity | NetBird, LAN routing, HTTPS reverse proxy |
+| Applications | Homepage, Vaultwarden, Jellyfin, Seerr, Sonarr, Bazarr |
+| Operational visibility | Proxmox graphs, Docker health results, application health pages |
+
+Additional linked applications and their access limits are listed in [services.md](docs/services.md).
+
+## Repository Structure
+
+```text
+homelab-infrastructure/
+├── README.md
+├── .gitignore
+├── docs/
+│   ├── architecture.md
+│   ├── services.md
+│   ├── networking.md
+│   ├── storage.md
+│   ├── monitoring.md
+│   └── lessons-learned.md
+└── assets/
+    ├── diagrams/
+    │   └── architecture.mmd
+    └── screenshots/
+        └── eight sanitized captures
+```
+
+This repository documents the running environment. Deployment manifests and automation will be added when actual configurations can be inspected and safely sanitized.
 
 ## Screenshots
 
-All images below are real browser captures, cropped and/or covered with opaque redactions. Hostnames, account details, addressing, administrative endpoints, activity records and personal media details have been excluded. Original captures are stored outside this repository.
+Real captures from the inspected environment, with crops and opaque redactions applied before committing.
 
-| View | What it demonstrates |
+### Home Lab Dashboard
+
+![Home Lab dashboard](assets/screenshots/homelab-dashboard.png)
+
+*The central service directory, organized by infrastructure and application role.*
+
+### Proxmox Host
+
+![Proxmox host overview](assets/screenshots/proxmox-overview.png)
+
+*Host resource summary and historical CPU, load, and memory graphs.*
+
+### Virtual Machines and LXC Containers
+
+![Proxmox guest inventory](assets/screenshots/proxmox-guests.png)
+
+*Two running QEMU VMs and two LXC guests. Guest and host identifiers are redacted.*
+
+### ZFS Storage
+
+![ZFS storage overview](assets/screenshots/storage-overview.png)
+
+*Three pools with reported capacity, allocation, and ONLINE state.*
+
+### Docker Services
+
+![Docker service inventory](assets/screenshots/docker-services.png)
+
+*The inspected Docker host's four containers, including health and image information. Network details are redacted.*
+
+### HTTPS Reverse Proxy
+
+![NetBird reverse-proxy service entries](assets/screenshots/reverse-proxy.png)
+
+*Two configured HTTPS service entries, with private domains removed.*
+
+### Sonarr System Health
+
+![Sonarr health and Docker package information](assets/screenshots/sonarr-health.png)
+
+*Application version, Docker hosting, disk-space information, and an update warning.*
+
+### Jellyfin Administration
+
+![Jellyfin server administration](assets/screenshots/jellyfin-admin.png)
+
+*Server and web version information, cropped to exclude user activity and media details.*
+
+## Skills Demonstrated
+
+The current environment provides practical examples of:
+
+- Organizing virtual machines and unprivileged Linux containers.
+- Allocating compute and storage resources across guest roles.
+- Operating Docker services and interpreting container health.
+- Relating ZFS pools to guest storage allocations.
+- Managing private connectivity and reverse-proxy service entries.
+- Using infrastructure and application interfaces to investigate system state.
+
+Specific design rationales and personal troubleshooting examples can be added to [lessons learned](docs/lessons-learned.md) when confirmed.
+
+## Future Improvements
+
+Potential next steps identified from the inspection; these are proposed work, not deployed features:
+
+- Verify and document application-to-guest placement and NAS share relationships.
+- Establish backup coverage and record a successful restore test.
+- Review resource trends and application update notices.
+- Document proxy authentication rules and validate remote access.
+- Evaluate dedicated availability monitoring and alert delivery.
+- Capture sanitized deployment configuration for repeatable maintenance.
+
+## Documentation
+
+| Document | Contents |
 | --- | --- |
-| [Home Lab dashboard](assets/screenshots/homelab-dashboard.png) | Organized entry point to infrastructure and applications |
-| [Proxmox overview](assets/screenshots/proxmox-overview.png) | Host resources and historical graphs |
-| [VM and LXC inventory](assets/screenshots/proxmox-guests.png) | Running guest types and resource usage; identifiers redacted |
-| [ZFS storage](assets/screenshots/storage-overview.png) | Reported pool sizes and ONLINE state |
-| [Docker services](assets/screenshots/docker-services.png) | Actual images and container health; network details redacted |
-| [Reverse proxy](assets/screenshots/reverse-proxy.png) | Two HTTPS service entries; domains redacted |
-| [Sonarr health](assets/screenshots/sonarr-health.png) | Application health and Docker package evidence |
-| [Jellyfin administration](assets/screenshots/jellyfin-admin.png) | Server and web version; personal activity and media excluded |
+| [Architecture](docs/architecture.md) | Guest roles, hosting evidence, and failure boundaries |
+| [Services](docs/services.md) | Service inventory, state, and inspection limits |
+| [Networking](docs/networking.md) | NetBird routing, reverse proxy, DNS, and security |
+| [Storage](docs/storage.md) | Pool capacities, NAS mounts, and share-verification gaps |
+| [Monitoring](docs/monitoring.md) | Metrics, logs, maintenance, and backup evidence |
+| [Lessons learned](docs/lessons-learned.md) | Motivation, findings, and owner-review questions |
 
-![Home Lab service directory](assets/screenshots/homelab-dashboard.png)
+Keep future updates grounded in inspected configuration, sanitize evidence before staging, and submit changes through a review branch. The repository remains private.
 
-*The dashboard groups infrastructure, media, automation, download, storage and security links. A link is evidence of an entry, not proof that its destination is fully configured.*
-
-![Proxmox host resource graphs](assets/screenshots/proxmox-overview.png)
-
-*Host summary and built-in resource history, with host identifiers and task records removed.*
-
-![Docker container inventory](assets/screenshots/docker-services.png)
-
-*Homepage and Vaultwarden report healthy; Portainer and the reverse-proxy container report running.*
-
-## Engineering challenges and decisions
-
-The observed environment separates storage and network routing into LXC containers and provides separate VMs for media and general Docker workloads. This creates several administration boundaries to understand and maintain. The reason for choosing each boundary has not been confirmed.
-
-Two concrete documentation challenges were reconciling storage allocations with pool-size reporting and distinguishing a running container from a working user-facing service. Both are explained with evidence in the supporting documents. Personal implementation and troubleshooting stories will be added only after confirmation; see [lessons and open questions](docs/lessons-learned.md).
-
-## Skills demonstrated
-
-The environment provides concrete examples for discussing:
-
-- **Virtualization and Linux administration:** managing VMs and unprivileged LXC guests, allocating resources, and interpreting host and guest metrics.
-- **Container operations:** inspecting Docker images, stacks, states, health results and engine settings through Portainer.
-- **Storage administration:** relating ZFS pools to guest mount points and distinguishing configured capacity from measured usage.
-- **Networking:** maintaining client connectivity, a LAN routing peer and HTTPS application-service entries.
-- **Operational reasoning:** interpreting application warnings and recognizing gaps in backup and monitoring evidence.
-
-These examples support discussion of the lab's configuration and maintenance. They do not establish production-scale operations, cloud deployments, a tested recovery objective, or authorship of the third-party applications.
-
-## Documentation guide
-
-- [Architecture and guest organization](docs/architecture.md)
-- [Services and access results](docs/services.md)
-- [Networking and security](docs/networking.md)
-- [Storage](docs/storage.md)
-- [Monitoring and maintenance](docs/monitoring.md)
-- [Lessons, review questions and evidence policy](docs/lessons-learned.md)
-
-For updates, reinspect the relevant interface, record the observation date, update only supported claims, sanitize evidence before staging, and keep changes in a review branch. This repository remains private; a commit, push or merge does not authorize public release.
+<sub>Presentation structure inspired by [ParampPathak/proxmox-homelab](https://github.com/ParampPathak/proxmox-homelab); descriptions and evidence reflect this lab.</sub>

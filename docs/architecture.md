@@ -25,7 +25,7 @@ Jellyfin, Seerr, Sonarr, Bazarr and the other media-related links share an endpo
 
 ## Diagram
 
-The main [README](../README.md#infrastructure-architecture) renders the architecture in Mermaid. The editable source is [architecture.mmd](../assets/diagrams/architecture.mmd). Solid relationships express confirmed UI configuration or hosting, rather than packet paths. Matching names support the Docker VM correlation as described above.
+The main [README](../README.md#architecture) renders the architecture in Mermaid. The editable source is [architecture.mmd](../assets/diagrams/architecture.mmd). Relationships express confirmed UI configuration or hosting, rather than packet paths. Matching names support the Docker VM correlation as described above.
 
 There is no standalone monitoring node or DNS-server node in the diagram because neither was confirmed. Resource monitoring is shown as a Proxmox capability in use. The NetBird DNS views listed no custom nameservers or zones.
 
