@@ -4,6 +4,10 @@ Self-hosted infrastructure built around Proxmox VE, Linux virtual machines, LXC 
 
 I built this lab to take my passion for building computers further and understand how the services I use every day work. It brings together media services, password management, storage, and infrastructure administration in one environment.
 
+![Home Lab dashboard](assets/screenshots/homelab-dashboard.png)
+
+*The central service directory, organized by infrastructure and application role.*
+
 **Current footprint:** one hypervisor · two VMs · two LXC containers · three ZFS pools · four containers on the inspected Docker host.
 
 [Architecture](#architecture) · [Hardware](#hardware) · [Services](#containerized-services) · [Networking](#networking) · [Screenshots](#screenshots) · [Documentation](#documentation)
@@ -276,12 +280,6 @@ This repository documents the running environment. Deployment manifests and auto
 ## Screenshots
 
 Real captures from the inspected environment, with crops and opaque redactions applied before committing.
-
-### Home Lab Dashboard
-
-![Home Lab dashboard](assets/screenshots/homelab-dashboard.png)
-
-*The central service directory, organized by infrastructure and application role.*
 
 ### Proxmox Host
 
