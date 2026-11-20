@@ -1,17 +1,19 @@
 flowchart TB
-    clients["Client devices"] --> lan["Local network"]
-    clients --> nb["NetBird private connectivity"]
-    nb --> route["Routing LXC"]
-    route --> lan
-    lan --> pve["Proxmox VE host"]
-    pve --> nas["NAS LXC · Ubuntu · unprivileged"]
-    pve --> media["Media VM"]
-    pve --> dock["Docker host VM"]
-    pve --> route
-    pve --> zfs["Host ZFS pools"]
-    zfs -->|"configured guest mounts"| nas
-    dock --> apps["Homepage · Portainer · Vaultwarden · NetBird proxy"]
-    proxy["NetBird HTTPS service entries"] --> jf["Jellyfin"]
-    proxy --> vw["Vaultwarden"]
-    apps --- vw
-    pve --- metrics["Built-in resource graphs"]
+    client["Client devices"] --> lan["Local network"]
+    client --> mesh["NetBird private connectivity"]
+    mesh --> router["Routing LXC"]
+    router --> lan
+    lan --> host["Proxmox VE"]
+    host --> nas["NAS LXC"]
+    host --> media["Media VM"]
+    host --> docker["Docker host VM"]
+    host --> router
+    host --> pools["ZFS storage pools"]
+    pools -->|"guest mount points"| nas
+    docker --> homepage["Homepage"]
+    docker --> portainer["Portainer"]
+    docker --> vault["Vaultwarden"]
+    docker --> reverse["NetBird reverse proxy"]
+    entries["Configured HTTPS services"] --> jellyfin["Jellyfin"]
+    entries --> vault
+    host --- graphs["Host and guest resource graphs"]
